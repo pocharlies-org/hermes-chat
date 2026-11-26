@@ -1,63 +1,33 @@
-# Contrato estable de <hermes-chat> (ley de contratos de la casa).
-# Lo declarado aquí no se renombra ni se elimina; un cambio incompatible = una entrada .vN+1
-# (la anterior pasa a deprecated). El commit que lo toque actualiza este fichero con el
-# trailer `Contract-Change: <action> <id>`.
-
+# Contratos de <hermes-chat> (ley de contratos de la casa).
+# Lo declarado aquí no se renombra ni se elimina; un cambio incompatible = entrada .vN+1.
+version: 1
 contracts:
   - id: hermes-chat.wire.v1
+    kind: schema
+    value: "meta · delta · reasoning · tool · tool_result · request · plan · custom · error · done"
+    role: consumer
+    files:
+      - hermes-chat.js
     status: active
-    description: >
-      POST al `turnUrl` del host con un body JSON; respuesta = SSE (text/event-stream) con
-      los tipos de evento de abajo. El parser descarta líneas de comentario (`:`) como keepalive.
-    request_body:
-      # Todos los campos son opcionales; el componente omite los vacíos.
-      text: string          # mensaje del usuario (vacío cuando se contesta un `request`)
-      conversation: string  # id de sesión que ecoea el host desde `meta`
-      mode: string          # id del modo activo (si el host define `modes`)
-      model: string         # id del modelo elegido (si el host define `models`)
-      answer: object        # presente al responder una RequestCard: {kind, decision|answer}
-    events:                 # cada frame: `event: <tipo>` + `data: <json>`
-      meta:        { conversation: string }
-      delta:       { text: string }                       # texto de asistente (streaming)
-      reasoning:   { text: string }                       # razonamiento (colapsable)
-      tool:        { id: string, name: string, args: object }
-      tool_result: { id: string, ok: boolean, summary: string }
-      request:     { kind: 'approve|question|plan', '…' } # RequestCard; la respuesta vuelve como `answer`
-      plan:        { steps: [{ text: string, status: 'pending|in_progress|done' }] }
-      custom:      { kind: string, data: any }            # lo renderiza el host vía `renderers[kind]`
-      error:       { message: string }
-      done:        { stopped?: boolean }
+    note: >
+      El componente POSTea al `turnUrl` del host {text, conversation?, mode?, model?, answer?} y lee
+      SSE (text/event-stream) con estos tipos de evento; los comentarios `:` son keepalive. El host
+      traduce su vocabulario Hermes a este (ley DGX-1301: la traducción es del huésped). Tipos:
+      meta{conversation} · delta{text} · reasoning{text} · tool{id,name,args} · tool_result{id,ok,summary}
+      · request{kind:approve|question|plan,…} (la respuesta vuelve como `answer`) · plan{steps[{text,status}]}
+      · custom{kind,data} (lo renderiza el host vía `renderers[kind]`) · error{message} · done{stopped?}.
 
   - id: hermes-chat.api.v1
+    kind: schema
+    value: customElements.define('hermes-chat', HermesChat)
+    role: publisher
+    files:
+      - hermes-chat.js
     status: active
-    description: Propiedades y eventos del custom element (los inyecta el host; nunca un fork del chat).
-    properties:
-      turnUrl: string
-      transport: '(body, onEvent, signal) => Promise'   # sustituye a fetch (demo/tests)
-      models: string[]        # vacío oculta el selector
-      model: string
-      modes: '[{id,label,hint}]'  # vacío oculta el radiogroup
-      conversations: '[{id,title}]'
-      currentConversation: string
-      contextLine: string     # pie "Hermes sabe que…" (display-only; el host sigue enviando el contexto real)
-      busy: boolean           # bloqueo externo de un-turno-por-usuario
-      renderers: '{ [kind]: (data) => Node }'
-      transformAssistant: '(text) => text'  # hidratación propia del host (p. ej. URLs→media de Studio)
-      hydrateMedia: boolean
-      placeholder: string
-      labels: object
-    slots:
-      - name: composer-actions   # acciones extra del composer (p. ej. el micro de voz de admin)
-      - name: settings           # contenido del cajón de ajustes (el componente no conoce la config del host)
-    events_emitted:
-      - new-conversation
-      - open-conversation        # {id}
-      - rename-conversation      # {id,title}
-      - delete-conversation      # {id}
-      - conversation-change      # {conversation}
-      - model-change             # {model}
-      - mode-change              # {mode}
-      - stop
-      - turn-end                 # {stopped}
-    method:
-      send: '(text?) => Promise'  # enviar un turno programáticamente
+    note: >
+      Propiedades del custom element que inyecta el host (nunca un fork del chat): turnUrl, transport,
+      models, model, modes, conversations, currentConversation, contextLine, busy, renderers,
+      transformAssistant, hydrateMedia, placeholder, labels y messages (historial [{role,text}] que el
+      host siembra al abrir una conversación — aditivo, 26-11). Slots: composer-actions, settings.
+      Eventos: new/open/rename/delete-conversation, conversation-change, model-change, mode-change,
+      stop, turn-end. Método: send(text?).

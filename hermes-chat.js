@@ -8,10 +8,10 @@
  * lo propio de cada sistema (auth, id de sesión, guardas, tarjetas, voz) lo inyecta el host
  * por propiedades/eventos — nunca por un fork del chat (ley DGX-1301).
  *
- * Contrato SSE (versionado en CONTRACTS.yaml): el componente hace POST a `turnUrl` con
+ * CONTRACT: hermes-chat.wire.v1 — Contrato SSE (versionado en CONTRACTS.yaml): el componente hace POST a `turnUrl` con
  * {text, conversation?, mode?, model?, answer?} y lee el stream con fetch+getReader.
- * Tipos que entiende: meta · delta · reasoning · tool · tool_result · request · plan ·
- * custom · error · done. Los comentarios `:` (keepalive) se descartan.
+ * Tipos que entiende: meta · delta · reasoning · tool · tool_result · request · plan · custom · error · done.
+ * Los comentarios `:` (keepalive) se descartan.
  *
  * Atajos con límite conocido anotados como `shortcut:` donde aplican.
  */
@@ -257,6 +257,15 @@ export class HermesChat extends HTMLElement {
   set model(v) { this._model = v; this._renderModel(); } get model() { return this._model; }
   set conversations(v) { this._conversations = v || []; if (this._drawer === 'history') this._renderHistory(); } get conversations() { return this._conversations; }
   set labels(v) { this._labels = { ...LABELS, ...(v || {}) }; } get labels() { return this._labels || LABELS; }
+
+  // Historial del host (p. ej. GET /mensajes): [{role:'user'|'assistant', text}] → burbujas.
+  // Aditivo al contrato (hermes-chat.api.v1): el host lo siembra al abrir una conversación.
+  set messages(v) {
+    this._items = (v || []).map((m) => (m.role === 'user'
+      ? { kind: 'user', text: m.text }
+      : { kind: 'assistant', text: m.text, streaming: false, reasoning: null }));
+    this._renderAll();
+  }
 
   _toggleDrawer(which) {
     this._drawer = this._drawer === which ? 'none' : which;
@@ -583,6 +592,7 @@ export class HermesChat extends HTMLElement {
   }
 }
 
+// CONTRACT: hermes-chat.api.v1 — el tag y su API son la superficie que consumen los hosts.
 customElements.define('hermes-chat', HermesChat);
 export { renderMarkdown };
 export default HermesChat;
