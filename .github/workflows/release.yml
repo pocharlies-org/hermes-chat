@@ -1,0 +1,19 @@
+name: release
+# Publica el fichero + su sha256 en la GitHub Release al pushear un tag v* (patrón del wheel de
+# hermes-api-client: pin por URL + sha256). shortcut: ubuntu-latest; confirmar pool ARC si aplica.
+on:
+  push:
+    tags: ['v*']
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions: { contents: write }
+    steps:
+      - uses: actions/checkout@v4
+      - name: sha256 del bundle
+        run: sha256sum hermes-chat.js | tee hermes-chat.js.sha256
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            hermes-chat.js
+            hermes-chat.js.sha256

@@ -1,0 +1,15 @@
+name: ci
+# shortcut: runners ubuntu-latest; confirmar si la casa exige el pool ARC (arc-k8s) del org.
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Sintaxis del componente
+        run: node --check hermes-chat.js

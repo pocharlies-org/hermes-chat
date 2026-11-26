@@ -1,0 +1,116 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>hermes-chat · demo mock</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #05050b; }
+  body { display: flex; align-items: stretch; gap: 16px; padding: 16px; font-family: system-ui, sans-serif; }
+  #chat { width: 440px; height: 720px; border: 1px solid #222; border-radius: 12px; overflow: hidden; }
+  #side { color: #8888a0; font: 12px/1.5 monospace; white-space: pre-wrap; flex: 1; }
+  #result { color: #f0f0f5; font: 700 16px/1.4 monospace; margin-bottom: 12px; }
+  #result.pass { color: #10b981; } #result.fail { color: #ef4444; }
+</style>
+<div id="chat"></div>
+<div id="side"><div id="result">RUNNING…</div><div id="log"></div></div>
+
+<script type="module">
+import './hermes-chat.js';
+
+const logEl = document.getElementById('log');
+const log = (m) => { logEl.textContent += m + '\n'; };
+
+const el = document.createElement('hermes-chat');
+el.modes = [
+  { id: 'ask', label: 'Preguntar', hint: 'Pide permiso antes de actuar' },
+  { id: 'auto', label: 'Auto', hint: 'Actúa sin preguntar' },
+  { id: 'plan', label: 'Plan', hint: 'Propone un plan y espera' },
+];
+el.model = 'resident';
+el.models = ['resident', 'claude-opus-5-5', 'qwen38-flash-next'];
+el.conversations = [{ id: 'c1', title: 'Stock caja A' }, { id: 'c2', title: 'Etiquetas' }];
+el.currentConversation = 'c1';
+el.contextLine = 'Estás en **Ubicaciones** (Skirmshop ES)';
+el.renderers = {
+  stock: (d) => {
+    const n = document.createElement('div');
+    n.className = 'stock-card';
+    n.style.cssText = 'border:1px solid #00d4ff;border-radius:8px;padding:6px 8px;color:#00d4ff';
+    n.textContent = `${d.sku}: ${d.units} uds`;
+    return n;
+  },
+};
+
+let call = 0;
+el.transport = async (body, onEvent) => {
+  call++;
+  log(`transport call #${call}: ${JSON.stringify(body)}`);
+  if (call === 1) {
+    onEvent('meta', { conversation: 'c1' });
+    onEvent('delta', { text: 'Voy a mirar el stock.\n\n' });
+    onEvent('reasoning', { text: 'necesito leer dos cajas antes de cotizar' });
+    onEvent('tool', { id: 't1', name: 'picqer_product_stock', args: { sku: 'SP-1' } });
+    onEvent('tool_result', { id: 't1', ok: true, summary: '12 uds disponibles' });
+    onEvent('tool', { id: 't2', name: 'labels_rate_quote', args: {} });
+    onEvent('tool_result', { id: 't2', ok: false, summary: 'sin tarifa para ese peso' });
+    onEvent('plan', { steps: [
+      { text: 'Leer stock', status: 'done' },
+      { text: 'Cotizar envío', status: 'in_progress' },
+      { text: 'Responder', status: 'pending' },
+    ] });
+    onEvent('custom', { kind: 'stock', data: { sku: 'SP-1', units: 12 } });
+    onEvent('delta', { text: '\nTengo el dato. ¿Preparo la **etiqueta**?' });
+    onEvent('request', { kind: 'question', question: '¿Preparo la **etiqueta** de envío?', options: ['Sí', 'Todavía no'] });
+    // sin done: el turno queda esperando respuesta (RequestCard)
+  } else {
+    onEvent('delta', { text: 'Etiqueta preparada ✅' });
+    onEvent('done', {});
+  }
+};
+
+document.getElementById('chat').appendChild(el);
+
+function checks() {
+  const r = el.shadowRoot;
+  const q = (s) => r.querySelector(s);
+  const qa = (s) => [...r.querySelectorAll(s)];
+  const assistantText = qa('.item.assistant').map((n) => n.textContent).join(' ');
+  const plan = q('.plan');
+  const tests = [
+    ['bloque "N pasos" colapsado', !!q('.steps')],
+    ['>=2 tool lines', qa('.item.tool').length >= 2],
+    ['tool ok (verde)', !!q('.steps .ok')],
+    ['tool ko (rojo)', !!q('.steps .ko')],
+    ['plan visible con 1/3', !!plan && plan.style.display !== 'none' && /1\/3/.test(plan.textContent)],
+    ['custom renderer (stock-card)', !!q('.stock-card')],
+    ['RequestCard question contestada', !!q('.card.question.done') && !!q('.card .answered')],
+    ['markdown <strong> en la pregunta', !!q('.card .head strong')],
+    ['burbuja de usuario', qa('.item.user').length >= 1],
+    ['respuesta final presente', /Etiqueta preparada/.test(assistantText)],
+    ['markdown <code> + escapado', /<code>/.test(renderMarkdownProbe()) && /&lt;b&gt;/.test(renderMarkdownProbe())],
+  ];
+  const failed = tests.filter(([, ok]) => !ok).map(([n]) => n);
+  const res = document.getElementById('result');
+  if (failed.length === 0) { res.textContent = `PASS ${tests.length}/${tests.length}`; res.className = 'pass'; }
+  else { res.textContent = `FAIL ${tests.length - failed.length}/${tests.length}: ${failed.join(' | ')}`; res.className = 'fail'; }
+  log(failed.length === 0 ? 'ALL PASS' : 'FAILED: ' + failed.join(', '));
+}
+
+// probe del escapado del markdown (evita inyección HTML): etiquetas deben salir escapadas
+import { renderMarkdown } from './hermes-chat.js';
+function renderMarkdownProbe() { return renderMarkdown('usa `x` y <b>negrita</b> & "comillas"'); }
+
+(async () => {
+  try {
+    el.addEventListener('turn-end', (e) => log('turn-end ' + JSON.stringify(e.detail)));
+    await el.send('hola, mira el stock de SP-1');
+    const card = el.shadowRoot.querySelector('.card.question');
+    if (!card) { document.getElementById('result').textContent = 'FAIL: no aparece la RequestCard'; return; }
+    const opt = card.querySelector('.buttons button');
+    opt.click(); // contesta "Sí" → turno 2 → done
+    await new Promise((r) => setTimeout(r, 100));
+    checks();
+  } catch (e) {
+    const res = document.getElementById('result'); res.textContent = 'FAIL: ' + e.message; res.className = 'fail';
+    log('ERROR ' + (e.stack || e));
+  }
+})();
+</script>
