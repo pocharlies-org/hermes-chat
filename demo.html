@@ -29,6 +29,7 @@ el.models = ['resident', 'claude-opus-5-5', 'qwen38-flash-next'];
 el.conversations = [{ id: 'c1', title: 'Stock caja A' }, { id: 'c2', title: 'Etiquetas' }];
 el.currentConversation = 'c1';
 el.contextLine = 'Estás en **Ubicaciones** (Skirmshop ES)';
+el.messages = [{ role: 'user', text: 'hola' }, { role: 'assistant', text: '**historial** sembrado' }];
 el.renderers = {
   stock: (d) => {
     const n = document.createElement('div');
@@ -86,6 +87,7 @@ function checks() {
     ['burbuja de usuario', qa('.item.user').length >= 1],
     ['respuesta final presente', /Etiqueta preparada/.test(assistantText)],
     ['markdown <code> + escapado', /<code>/.test(renderMarkdownProbe()) && /&lt;b&gt;/.test(renderMarkdownProbe())],
+    ['historial sembrado con markdown', qa('.item.user').length >= 2 && /historial/.test(assistantText) && !!q('.item.assistant .md strong')],
   ];
   const failed = tests.filter(([, ok]) => !ok).map(([n]) => n);
   const res = document.getElementById('result');
